@@ -7,16 +7,18 @@ const commands = [
         .addUserOption(opt => opt
             .setName('mitarbeiter')
             .setDescription('Der Mitarbeiter, den du einstellen möchtest.')
-            .setRequired(true))
+            .setRequired(true)
+        )
         .addRoleOption(opt => opt
             .setName('dienstgrad')
             .setDescription('Der Dienstgrad des neuen Mitarbeiters.')
-            .setRequired(true))
+            .setRequired(true)
+        )
         .addStringOption(opt => opt
             .setName('grund')
             .setDescription('Der Grund für die Beförderung.')
-            .setRequired(false))
-        ,
+            .setRequired(false)
+        ),
     
     new SlashCommandBuilder()
         .setName('entlassen')
@@ -24,12 +26,13 @@ const commands = [
         .addUserOption(opt => opt
             .setName('mitarbeiter')
             .setDescription('Der Mitarbeiter, den du entlassen möchtest.')
-            .setRequired(true))
+            .setRequired(true)
+        )
         .addStringOption(opt => opt
             .setName('grund')
             .setDescription('Der Grund für die Entlassung.')
-            .setRequired(true))
-        ,
+            .setRequired(true)
+        ),
 
     new SlashCommandBuilder()
         .setName('befoerdern')
@@ -37,16 +40,18 @@ const commands = [
         .addUserOption(opt => opt
             .setName('mitarbeiter')
             .setDescription('Der Mitarbeiter, den du befördern möchtest.')
-            .setRequired(true))
+            .setRequired(true)
+        )
         .addRoleOption(opt => opt
             .setName('dienstgrad')
             .setDescription('Der neue Dienstgrad des Mitarbeiters.')
-            .setRequired(true))
+            .setRequired(true)
+        )
         .addStringOption(opt => opt
             .setName('grund')
             .setDescription('Der Grund für die Beförderung.')
-            .setRequired(false))
-        ,
+            .setRequired(false)
+        ),
     
     new SlashCommandBuilder()
         .setName('degradieren')
@@ -54,16 +59,18 @@ const commands = [
         .addUserOption(opt => opt
             .setName('mitarbeiter')
             .setDescription('Der Mitarbeiter, den du degradieren möchtest.')
-            .setRequired(true))
+            .setRequired(true)
+        )
         .addRoleOption(opt => opt
             .setName('dienstgrad')
             .setDescription('Der neue Dienstgrad des Mitarbeiters.')
-            .setRequired(true))
+            .setRequired(true)
+        )
         .addStringOption(opt => opt
             .setName('grund')
             .setDescription('Der Grund für die Degradiertung.')
-            .setRequired(true))
-        ,
+            .setRequired(true)
+        ),
     
     new SlashCommandBuilder()
         .setName('abteilung_zuweisen')
@@ -91,12 +98,43 @@ const commands = [
         .addUserOption(opt => opt
             .setName('mitarbeiter')            
             .setDescription('Der Mitarbeiter, dem du eine Abteilung entfernen möchtest.')
-            .setRequired(true))
+            .setRequired(true)
+        )
         .addStringOption(opt => opt
             .setName('abteilung')
             .setDescription('Die Abteilung, die du dem Mitarbeiter entfernen möchtest.')
-            .setRequired(true))
-            
-].map(cmd => cmd.toJSON());
+            .setRequired(true)
+        ),
+    
+    new SlashCommandBuilder()
+        .setName('suspendieren')
+        .setDescription('Suspendiert einen Mitarbeiter.')
+        .addUserOption(opt => opt
+            .setName('mitarbeiter')
+            .setDescription('Der Mitarbeiter, den du suspendieren möchtest.')
+            .setRequired(true)
+        )
+        .addStringOption(opt => opt
+            .setName('grund')
+            .setDescription('Grund der Suspendierung.')
+            .setRequired(true)
+        )
+        .addStringOption(opt => opt
+            .setName("dauer")
+            .setDescription("z. B. 7d, 12h, 30m (leer = bis Gespräch)")
+            .setRequired(false)
+        ),
+
+    new SlashCommandBuilder()
+        .setName('suspendierung_entfernen')
+        .setDescription('Hebt die Suspendierung eines Mitarbeiters auf.')
+        .addUserOption(opt => opt
+            .setName('mitarbeiter')
+            .setDescription('Der Mitarbeiter, dessen Suspendierung du aufheben möchtest.')
+            .setRequired(true)
+        )
+
+]
+.map(cmd => cmd.toJSON());
 
 module.exports = { commands };

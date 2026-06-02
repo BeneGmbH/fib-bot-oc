@@ -1,3 +1,4 @@
+// index.js
 const { token, teamupdatesChannelId } = require("./config.json");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 
@@ -7,23 +8,22 @@ const {
     agent_nebenrollen,
     entlassung_rollen_add,
     einstellung_rollen_remove,
+    suspendierung,
     abteilungen
 } = require("./rollen.json");
 
-const dienstnummern = require("./dienstnummern.json"); // map wurde in dienstnummern.json gespeichert
+const dienstnummern = require("./dienstnummern.json"); // map in dienstnummern.json
 const mapPath = "./dienstnummern.json";
 
-const FIB_LOGO =
-    "https://cdn.discordapp.com/attachments/1364316792226316341/1511095061281247237/fib_logo.png";
+const FIB_LOGO = "https://cdn.discordapp.com/attachments/1364316792226316341/1511095061281247237/fib_logo.png";
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
 const fs = require("fs");
+const path = require("path");
+const suspensionFile = path.join(__dirname, "data", "suspendierungen.json");
 
 /**
  * =========================
@@ -43,24 +43,17 @@ async function syncExistingMembers(guild) {
     await guild.members.fetch();
 
     guild.members.cache.forEach(member => {
-
         if (member.user.bot) return;
 
-        // Hat schon FIB?
         const existing = getMemberFIB(member.id);
         if (existing) {
-            // Nickname ggf. aktualisieren
             setNickname(member, existing);
             return;
         }
 
-        // hat Dienstgrad?
-        const role = member.roles.cache.find(r =>
-            dienstgrade.includes(r.id)
-        );
+        const role = member.roles.cache.find(r => dienstgrade.includes(r.id));
         if (!role) return;
 
-        // freie Nummer suchen
         const fib = assignFIB(member, role.id);
         setNickname(member, fib);
     });
@@ -109,12 +102,8 @@ function getMemberFIB(memberId) {
 function setNickname(member, fib) {
     if (!fib) return;
 
-    // bestehender Server-Name (IC Name)
     const baseName = member.nickname || member.user.username;
-
-    // falls schon FIB drin ist → entfernen
     const cleaned = baseName.replace(/^\[FIB-\d+\]\s*/, "");
-
     const newName = `[${fib}] ${cleaned}`;
 
     member.setNickname(newName).catch(() => {});
@@ -141,7 +130,7 @@ async function sendUpdate(member, data) {
         .setThumbnail(FIB_LOGO)
         .addFields(
             { name: "📄 Grund", value: data.reason || "Kein Grund angegeben" },
-            { name: "📅 Datum", value: formatDate(), inline: true },
+            { name: "📅 Datum", value: `<t:${Math.floor(Date.now()/1000)}:F>`, inline: true },
             { name: "👮 Ausgeführt von", value: data.executor, inline: true }
         )
         .setTimestamp();
@@ -155,7 +144,64 @@ async function sendUpdate(member, data) {
 
 /**
  * =========================
- * READY
+ * SUSPENDIERUNGEN
+ * =========================
+ */
+function loadSuspensions() {
+    if (!fs.existsSync(suspensionFile)) {
+        fs.writeFileSync(suspensionFile, "{}");
+    }
+    return JSON.parse(fs.readFileSync(suspensionFile, "utf8"));
+}
+
+function saveSuspensions(data) {
+    fs.writeFileSync(suspensionFile, JSON.stringify(data, null, 4));
+}
+
+function getSuspendableRoles() {
+    const roles = new Set();
+
+    dienstgrade.forEach(role => roles.add(role));
+    basis_nebenrollen.forEach(role => roles.add(role));
+    agent_nebenrollen.forEach(role => roles.add(role));
+
+    Object.values(abteilungen).forEach(department => {
+        Object.entries(department).forEach(([key, value]) => {
+            if (key !== "name") roles.add(value);
+        });
+    });
+
+    return [...roles];
+}
+setInterval(async () => {
+    const suspensions = loadSuspensions();
+    const now = Date.now();
+    for (const [userId, data] of Object.entries(suspensions)) {
+        if (data.expires && now >= data.expires) {
+            const guild = client.guilds.cache.first();
+            const member = await guild.members.fetch(userId).catch(()=>null);
+            if (member) {
+                // Rollen zurückgeben
+                await member.roles.add(data.roles);
+                await member.roles.remove(suspendierung);
+
+                await sendUpdate(member, {
+                    title: "▶️ Suspendierung automatisch aufgehoben",
+                    description: `<@${member.id}> ist wieder aktiv (automatisch).`,
+                    reason: "Ablauf der Suspendierung",
+                    executor: client.user.tag,
+                    color: 0x57f287
+                });
+            }
+            delete suspensions[userId];
+        }
+    }
+    saveSuspensions(suspensions);
+}, 60_000); // jede Minute prüfen
+
+/**
+ * =========================
+ * CLIENT READY
  * =========================
  */
 client.once("ready", async () => {
@@ -165,15 +211,12 @@ client.once("ready", async () => {
     if (!guild) return;
 
     await syncExistingMembers(guild);
-
     console.log("✅ FIB Sync abgeschlossen");
+
     client.user.setPresence({
-		activities: [{
-		name: 'Schaut dem FIB bei der Arbeit zu',
-		type: 3,
-	 }],
-	status: 'online',
-  });
+        activities: [{ name: 'Schaut dem FIB bei der Arbeit zu', type: 3 }],
+        status: 'online',
+    });
 });
 
 /**
@@ -181,7 +224,7 @@ client.once("ready", async () => {
  * INTERACTIONS
  * =========================
  */
-client.on("interactionCreate", async (interaction) => {
+client.on("interactionCreate", async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
@@ -248,9 +291,7 @@ client.on("interactionCreate", async (interaction) => {
     if (commandName === "befoerdern") {
         const newRole = interaction.options.getRole("dienstgrad");
 
-        const oldRole = member.roles.cache.find(r =>
-            dienstgrade.includes(r.id)
-        );
+        const oldRole = member.roles.cache.find(r => dienstgrade.includes(r.id));
         if (!oldRole) return interaction.reply({ content: "❌ Kein Dienstgrad", ephemeral: true });
 
         await member.roles.remove(oldRole);
@@ -259,7 +300,7 @@ client.on("interactionCreate", async (interaction) => {
         const oldFib = getMemberFIB(member.id);
         releaseFIB(member.id);
 
-        const fib = assignFIB(member, newRole.id) || oldFib; // Nummer neu oder alte behalten
+        const fib = assignFIB(member, newRole.id) || oldFib;
         setNickname(member, fib);
 
         await sendUpdate(member, {
@@ -281,9 +322,7 @@ client.on("interactionCreate", async (interaction) => {
     if (commandName === "degradieren") {
         const newRole = interaction.options.getRole("dienstgrad");
 
-        const oldRole = member.roles.cache.find(r =>
-            dienstgrade.includes(r.id)
-        );
+        const oldRole = member.roles.cache.find(r => dienstgrade.includes(r.id));
         if (!oldRole) return interaction.reply({ content: "❌ Kein Dienstgrad", ephemeral: true });
 
         await member.roles.remove(oldRole);
@@ -302,6 +341,138 @@ client.on("interactionCreate", async (interaction) => {
         });
 
         return interaction.reply({ content: "⬇️ degradiert", ephemeral: true });
+    }
+
+    /**
+     * =========================
+     * SUSPENDIEREN
+     * =========================
+     */
+    if (commandName === "suspendieren") {
+        const member = interaction.options.getMember("mitarbeiter");
+        const grund = interaction.options.getString("grund") || "Kein Grund angegeben";
+        const duration = interaction.options.getString("dauer"); // optional
+
+        const suspensions = loadSuspensions();
+
+        if (suspensions[member.id]) {
+            return interaction.reply({
+                content: "❌ Dieser Mitarbeiter ist bereits suspendiert.",
+                ephemeral: true
+            });
+        }
+
+        /**
+         * =========================
+         * Dauer berechnen (optional)
+         * =========================
+         */
+        let expires = null;
+        if (duration) {
+            const unit = duration.slice(-1);
+            const amount = parseInt(duration.slice(0, -1));
+            if (!isNaN(amount)) {
+                const now = Date.now();
+                if (unit === "d") expires = now + amount * 24 * 60 * 60 * 1000;
+                else if (unit === "h") expires = now + amount * 60 * 60 * 1000;
+                else if (unit === "m") expires = now + amount * 60 * 1000;
+            }
+        }
+
+        /**
+         * =========================
+         * Rollen sammeln
+         * =========================
+         */
+        const removableRoles = getSuspendableRoles();
+        const rolesToRemove = member.roles.cache
+            .filter(role => removableRoles.includes(role.id))
+            .map(role => role.id);
+
+        /**
+         * =========================
+         * Rollen entfernen + Suspend-Rolle geben
+         * =========================
+         */
+        if (rolesToRemove.length > 0) {
+            await member.roles.remove(rolesToRemove);
+        }
+        await member.roles.add(suspendierung);
+
+        /**
+         * =========================
+         * Speichern
+         * =========================
+         */
+        suspensions[member.id] = {
+            roles: rolesToRemove,
+            reason: grund,
+            moderator: interaction.user.id,
+            timestamp: Date.now(),
+            expires: expires // kann null sein (bis Gespräch)
+        };
+        saveSuspensions(suspensions);
+
+        /**
+         * =========================
+         * Embed für Team-Update senden
+         * =========================
+         */
+        await sendUpdate(member, {
+            title: "⏸️ Suspendierung",
+            description: `<@${member.id}> wurde suspendiert.\n⏱ Ende: <t:${Math.floor(expires / 1000)}:F> (<t:${Math.floor(expires / 1000)}:R>)`,
+            reason: grund,
+            executor: interaction.user.tag,
+            color: 0xffaa00
+        });
+
+        return interaction.reply({
+            content:
+                expires
+                    ? `⏸️ Mitarbeiter suspendiert bis <t:${Math.floor(expires / 1000)}:F>`
+                    : "⏸️ Mitarbeiter suspendiert (bis Gespräch)",
+            ephemeral: true
+        });
+    }
+
+    /**
+     * =========================
+     * SUSPENDIERUNG AUFHEBEN
+     * =========================
+     */
+    if (commandName === "suspendierung_aufheben") {
+        const member = interaction.options.getMember("mitarbeiter");
+        const grund = interaction.options.getString("grund") || "Kein Grund angegeben";
+
+        const suspensions = loadSuspensions();
+
+        if (!suspensions[member.id]) {
+            return interaction.reply({
+                content: "❌ Dieser Mitarbeiter ist nicht suspendiert.",
+                ephemeral: true
+            });
+        }
+
+        // Rollen wiedergeben
+        const savedRoles = suspensions[member.id].roles || [];
+        if (savedRoles.length > 0) await member.roles.add(savedRoles);
+        await member.roles.remove(suspendierung);
+
+        delete suspensions[member.id];
+        saveSuspensions(suspensions);
+
+        await sendUpdate(member, {
+            title: "▶️ Suspendierung aufgehoben",
+            description: `<@${member.id}> ist wieder aktiv.`,
+            reason: grund,
+            executor: interaction.user.tag,
+            color: 0x57f287
+        });
+
+        return interaction.reply({
+            content: "▶️ Suspendierung aufgehoben",
+            ephemeral: true
+        });
     }
 });
 
