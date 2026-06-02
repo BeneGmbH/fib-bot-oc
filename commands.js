@@ -126,7 +126,7 @@ const commands = [
         ),
 
     new SlashCommandBuilder()
-        .setName('suspendierung_entfernen')
+        .setName('suspendierung_aufheben')
         .setDescription('Hebt die Suspendierung eines Mitarbeiters auf.')
         .addUserOption(opt => opt
             .setName('mitarbeiter')

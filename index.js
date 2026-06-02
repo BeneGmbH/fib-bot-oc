@@ -453,26 +453,42 @@ client.on("interactionCreate", async interaction => {
             });
         }
 
-        // Rollen wiedergeben
         const savedRoles = suspensions[member.id].roles || [];
-        if (savedRoles.length > 0) await member.roles.add(savedRoles);
-        await member.roles.remove(suspendierung);
 
-        delete suspensions[member.id];
-        saveSuspensions(suspensions);
+        try {
+            // 1️⃣ ZUERST Suspendierungsrolle entfernen
+            await member.roles.remove(suspendierung);
 
-        await sendUpdate(member, {
-            title: "▶️ Suspendierung aufgehoben",
-            description: `<@${member.id}> ist wieder aktiv.`,
-            reason: grund,
-            executor: interaction.user.tag,
-            color: 0x57f287
-        });
+            // 2️⃣ Dann alte Rollen wiedergeben
+            if (savedRoles.length > 0) {
+                await member.roles.add(savedRoles);
+            }
 
-        return interaction.reply({
-            content: "▶️ Suspendierung aufgehoben",
-            ephemeral: true
-        });
+            // 3️⃣ speichern & cleanup
+            delete suspensions[member.id];
+            saveSuspensions(suspensions);
+
+            await sendUpdate(member, {
+                title: "▶️ Suspendierung aufgehoben",
+                description: `<@${member.id}> ist wieder aktiv.`,
+                reason: grund,
+                executor: interaction.user.tag,
+                color: 0x57f287
+            });
+
+            return interaction.reply({
+                content: "▶️ Suspendierung aufgehoben",
+                ephemeral: true
+            });
+
+        } catch (err) {
+            console.error("Fehler beim Aufheben der Suspendierung:", err);
+
+            return interaction.reply({
+                content: "❌ Fehler beim Aufheben der Suspendierung.",
+                ephemeral: true
+            });
+        }
     }
 });
 
