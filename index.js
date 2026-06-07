@@ -586,8 +586,44 @@ client.on("interactionCreate", async interaction => {
             color: 0xffcc00
         });
 
+        // Bei Stufe 3 → automatische Suspendierung auslösen
+        if (stufe === "3") {
+            const suspensions = loadSuspensions();
+
+            if (!suspensions[member.id]) {
+                const removableRoles = getSuspendableRoles();
+                const rolesToRemove = member.roles.cache
+                    .filter(role => removableRoles.includes(role.id))
+                    .map(role => role.id);
+
+                if (rolesToRemove.length > 0) {
+                    await member.roles.remove(rolesToRemove).catch(() => {});
+                }
+                await member.roles.add(suspendierung).catch(() => {});
+
+                suspensions[member.id] = {
+                    roles: rolesToRemove,
+                    reason: "Automatische Suspendierung nach Verwarnung 3",
+                    moderator: client.user.id,
+                    timestamp: Date.now(),
+                    expires: null
+                };
+                saveSuspensions(suspensions);
+
+                await sendUpdate(member, {
+                    title: "⏸️ Automatische Suspendierung",
+                    description: `<@${member.id}> wurde automatisch suspendiert (Verwarnung 3).\n⏱ Ende: Bis Gespräch`,
+                    reason: "Automatische Suspendierung nach Verwarnung 3",
+                    executor: client.user.tag,
+                    color: 0xffaa00
+                });
+            }
+        }
+
         return interaction.reply({
-            content: `⚠️ Sanktion ausgestellt → Verwarnung **${stufe}**`,
+            content: stufe === "3"
+                ? `⚠️ Sanktion ausgestellt → Verwarnung **${stufe}** + automatische Suspendierung`
+                : `⚠️ Sanktion ausgestellt → Verwarnung **${stufe}**`,
             ephemeral: true
         });
     }
