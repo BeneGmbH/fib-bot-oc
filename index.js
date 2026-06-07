@@ -1,5 +1,5 @@
 // index.js
-const { token, teamupdatesChannelId } = require("./config.json");
+const { token, teamupdatesChannelId, personalChannelId } = require("./config.json");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 
 const {
@@ -263,7 +263,7 @@ function saveSanctions(data) {
  * CLIENT READY
  * =========================
  */
-client.once("ready", async () => {
+client.once("clientReady", async () => {
     console.log(`Bot online als ${client.user.tag}`);
 
     const guild = client.guilds.cache.first();
@@ -586,8 +586,48 @@ client.on("interactionCreate", async interaction => {
             color: 0xffcc00
         });
 
-        // Bei Stufe 3 → automatische Suspendierung auslösen
+        // Bei Stufe 3 → HR-Channel benachrichtigen + automatische Suspendierung
         if (stufe === "3") {
+            // HR-Channel Embed
+            try {
+                const hrChannel = await client.channels.fetch(personalChannelId);
+                if (hrChannel) {
+                    const allSanctions = sanctions[member.id];
+                    const hrEmbed = new EmbedBuilder()
+                        .setColor(0xed4245)
+                        .setTitle("🚨 Gesprächsbedarf – Dritte Sanktion")
+                        .setThumbnail(FIB_LOGO)
+                        .setDescription(
+                            `<@${member.id}> hat die **dritte Sanktion** erhalten.\n\n` +
+                            `Gemäß interner Regelung ist bei drei Sanktionen eine **Entlassung vorgesehen**.\n` +
+                            `Bitte ein Gespräch mit dem Mitarbeiter vereinbaren.`
+                        )
+                        .addFields(
+                            {
+                                name: "📋 Übersicht aller Sanktionen",
+                                value: allSanctions.map(s =>
+                                    `**#${s.id} – Stufe ${s.stufe}**\n` +
+                                    `Grund: ${s.grund}\n` +
+                                    `Moderator: ${s.moderator}\n` +
+                                    `Datum: <t:${Math.floor(s.timestamp / 1000)}:D>`
+                                ).join("\n\n")
+                            },
+                            {
+                                name: "⏸️ Status",
+                                value: "Mitarbeiter wurde automatisch suspendiert (bis Gespräch).",
+                                inline: false
+                            }
+                        )
+                        .setFooter({ text: "Bitte zeitnah handeln." })
+                        .setTimestamp();
+
+                    await hrChannel.send({ embeds: [hrEmbed] });
+                }
+            } catch (err) {
+                console.error("Fehler beim Senden in HR-Channel:", err);
+            }
+
+            // Automatische Suspendierung
             const suspensions = loadSuspensions();
 
             if (!suspensions[member.id]) {
