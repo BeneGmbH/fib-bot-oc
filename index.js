@@ -1,5 +1,6 @@
 // index.js
-const { token, teamupdatesChannelId, personalChannelId } = require("./config.json");
+require("dotenv").config();
+const { teamupdatesChannelId, personalChannelId } = require("./config.json");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 
 const {
@@ -888,4 +889,4 @@ client.on("interactionCreate", async interaction => {
     }
 });
 
-client.login(token);
+client.login(process.env.DISCORD_TOKEN);
