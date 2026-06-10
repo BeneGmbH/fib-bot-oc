@@ -98,22 +98,22 @@ const commands = [
             .setRequired(true)
             .addChoices(
                 // Internal Affairs
-                { name: "IA – Lead",                       value: "1456772033290436691" },
-                { name: "IA – Stv. Lead",                  value: "1458589597943726110" },
-                { name: "IA – Senior IA Investigator",     value: "1458589712301424692" },
-                { name: "IA – IA Investigator",            value: "1458589808254517412" },
+                { name: "IA – Lead",                         value: "1456772033290436691" },
+                { name: "IA – Stv. Lead",                    value: "1458589597943726110" },
+                { name: "IA – Senior IA Investigator",       value: "1458589712301424692" },
+                { name: "IA – IA Investigator",              value: "1458589808254517412" },
                 { name: "IA – IA Probationary Investigator", value: "1458589935077560404" },
-                { name: "IA – Member",                     value: "1456772225855393934" },
+                { name: "IA – Member",                       value: "1456772225855393934" },
                 // Human Resources
-                { name: "HR – Lead",                       value: "1456776873060335779" },
-                { name: "HR – Recruiter",                  value: "1456964719779909662" },
-                { name: "HR – Instructor",                 value: "1456782213306912859" },
+                { name: "HR – Lead",                         value: "1456776873060335779" },
+                { name: "HR – Recruiter",                    value: "1456964719779909662" },
+                { name: "HR – Instructor",                   value: "1456782213306912859" },
                 // Hostage Rescue Team
-                { name: "HRT – Lead",                      value: "1457036069034918003" },
-                { name: "HRT – Member",                    value: "1457036409402818814" },
+                { name: "HRT – Lead",                        value: "1457036069034918003" },
+                { name: "HRT – Member",                      value: "1457036409402818814" },
                 // Intelligence
-                { name: "Intel – Lead",                    value: "1457036468898889929" },
-                { name: "Intel – Officer",                 value: "1457036457737850933" }
+                { name: "Intel – Lead",                      value: "1457036468898889929" },
+                { name: "Intel – Officer",                   value: "1457036457737850933" }
             )
         )
         .addStringOption(opt => opt
@@ -158,6 +158,11 @@ const commands = [
         .addStringOption(opt => opt
             .setName('grund')
             .setDescription('Grund der Suspendierung.')
+            .setRequired(true)
+        )
+        .addUserOption(opt => opt
+            .setName('ansprechpartner')
+            .setDescription('Person, bei der sich der Mitarbeiter melden muss.')
             .setRequired(true)
         )
         .addStringOption(opt => opt

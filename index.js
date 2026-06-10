@@ -293,6 +293,7 @@ client.on('guildMemberAdd', async (member) => {
         await member.roles.add(role);
     }
 });
+
 /**
  * =========================
  * INTERACTIONS
@@ -446,7 +447,8 @@ client.on("interactionCreate", async interaction => {
      * =========================
      */
     if (commandName === "suspendieren") {
-        const duration = interaction.options.getString("dauer"); // optional
+        const duration = interaction.options.getString("dauer");
+        const ansprechpartner = interaction.options.getUser("ansprechpartner");
 
         const suspensions = loadSuspensions();
 
@@ -490,11 +492,16 @@ client.on("interactionCreate", async interaction => {
         };
         saveSuspensions(suspensions);
 
+        const ansprechpartnerMention = ansprechpartner ? `<@${ansprechpartner.id}>` : interaction.user.tag;
+
         await sendUpdate(member, {
             title: "⏸️ Suspendierung",
-            description: expires
-                ? `<@${member.id}> wurde suspendiert.\n⏱ Ende: <t:${Math.floor(expires / 1000)}:F> (<t:${Math.floor(expires / 1000)}:R>)`
-                : `<@${member.id}> wurde suspendiert.\n⏱ Ende: Bis Gespräch`,
+            description:
+                (expires
+                    ? `<@${member.id}> wurde suspendiert.\n⏱ Ende: <t:${Math.floor(expires / 1000)}:F> (<t:${Math.floor(expires / 1000)}:R>)`
+                    : `<@${member.id}> wurde suspendiert.\n⏱ Ende: Bis Gespräch`) +
+                `\n\n🚫 **Ein Dienstantritt während der Suspendierung hat eine sofortige Entlassung zur Folge.**` +
+                `\n📩 Bitte melde dich bei: ${ansprechpartnerMention}`,
             reason: grund,
             executor: interaction.user.tag,
             color: 0xffaa00
@@ -664,7 +671,10 @@ client.on("interactionCreate", async interaction => {
 
                 await sendUpdate(member, {
                     title: "⏸️ Automatische Suspendierung",
-                    description: `<@${member.id}> wurde automatisch suspendiert (Verwarnung 3).\n⏱ Ende: Bis Gespräch`,
+                    description:
+                        `<@${member.id}> wurde automatisch suspendiert (Verwarnung 3).\n⏱ Ende: Bis Gespräch` +
+                        `\n\n🚫 **Ein Dienstantritt während der Suspendierung hat eine sofortige Entlassung zur Folge.**` +
+                        `\n📩 Bitte melde dich beim **Office of HR** oder **Office of Administration**.`,
                     reason: "Automatische Suspendierung nach Verwarnung 3",
                     executor: client.user.tag,
                     color: 0xffaa00
