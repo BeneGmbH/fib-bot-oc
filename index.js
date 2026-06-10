@@ -283,6 +283,18 @@ client.once("clientReady", async () => {
 
 /**
  * =========================
+ * JOIN
+ * =========================
+ */
+client.on('guildMemberAdd', async (member) => {
+    const role = member.guild.roles.cache.get('1456757334218117161');
+
+    if (role) {
+        await member.roles.add(role);
+    }
+});
+/**
+ * =========================
  * INTERACTIONS
  * =========================
  */
