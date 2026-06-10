@@ -273,7 +273,7 @@ client.once("clientReady", async () => {
     }
 
     await syncExistingMembers(guild);
-    console.log("✅ FIB Sync abgeschlossen");
+    console.log("✅ FIB Sync abgeschlossen. Willkommen zurück Bene!");
 
     client.user.setPresence({
         activities: [{ name: "Schaut dem FIB bei der Arbeit zu", type: 3 }],
@@ -544,7 +544,7 @@ client.on("interactionCreate", async interaction => {
 
             await sendUpdate(member, {
                 title: "▶️ Suspendierung aufgehoben",
-                description: `<@${member.id}> ist wieder aktiv.`,
+                description: `<@${member.id}> ist wieder zum Dienst freigegeben.`,
                 reason: grund,
                 executor: interaction.user.tag,
                 color: 0x57f287
