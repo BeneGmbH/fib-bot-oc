@@ -1,9 +1,10 @@
 // deploy.js
+require("dotenv").config();
 const { REST, Routes } = require('discord.js');
-const { token, clientId, guildId } = require('./config.json');
+const { clientId, guildId } = require('./config.json');
 const { commands } = require('./commands.js');
 
-const rest = new REST({ version: '10' }).setToken(token);
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
     try {
