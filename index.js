@@ -1,7 +1,7 @@
 // index.js
 require("dotenv").config();
 const { teamupdatesChannelId, personalChannelId } = require("./config.json");
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { Client, GatewayIntentBits, EmbedBuilder, Partials } = require("discord.js");
 
 const {
     dienstgrade,
@@ -21,13 +21,30 @@ const mapPath = "./dienstnummern.json";
 const FIB_LOGO = "https://cdn.discordapp.com/attachments/1364316792226316341/1511095061281247237/fib_logo.png";
 
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageReactions
+    ],
+    partials: [
+        Partials.Channel,
+        Partials.GuildMember,
+        Partials.Message,
+        Partials.User
+    ]
 });
 
 const fs = require("fs");
 const path = require("path");
 const suspensionFile = path.join(__dirname, "data", "suspendierungen.json");
 const sanctionFile = path.join(__dirname, "data", "sanktionen.json");
+
+const besprechungenFile = path.join(__dirname, "data", "besprechungen.json");
+const abmeldungenFile = path.join(__dirname, "data", "abmeldungen.json");
+
+const EMOJI_ANWESEND = "✅";
+const EMOJI_ABWESEND = "❌";
 
 /**
  * =========================
@@ -261,6 +278,176 @@ function saveSanctions(data) {
 
 /**
  * =========================
+ * BESPRECHUNGEN
+ * =========================
+ */
+function loadBesprechungen() {
+    if (!fs.existsSync(besprechungenFile)) {
+        fs.mkdirSync(path.dirname(besprechungenFile), { recursive: true });
+        fs.writeFileSync(besprechungenFile, "{}");
+    }   
+    return JSON.parse(fs.readFileSync(besprechungenFile, "utf8"));
+}
+
+function saveBesprechungen(data) {
+    fs.writeFileSync(besprechungenFile, JSON.stringify(data, null, 4));
+}
+
+function parseDatumUhrzeit(datum, uhrzeit) {
+    const datumMatch = datum.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    const zeitMatch = uhrzeit.match(/^(\d{2}):(\d{2})$/);
+    if (!datumMatch || !uhrzeitMatch) return null;
+
+    const [, tt, mm, jjjj] = datumMatch;
+    const [, hh, mm] = uhrzeitMatch;
+
+    const date = new Date(
+        parseInt(jjjj), parseInt(mm) - 1, parseInt(tt),
+        parseInt(hh), parseInt(min), 0
+    );
+
+    if (isNaN(date.getTime())) return null;
+    return date.getTime();
+}
+
+/**
+ * =========================
+ * ABMELDUNGEN
+ * =========================
+ */
+function loadAbmeldungen() {
+    if (!fs.existsSync(abmeldungenFile)) {
+        fs.mkdirSync(path.dirname(abmeldungenFile), { recursive: true });
+        fs.writeFileSync(abmeldungenFile, "{}");
+    }
+    return JSON.parse(fs.readFileSync(abmeldungenFile, "utf8"));
+}
+
+function saveAbmeldungen(data) {
+    fs.writeFileSync(abmeldungenFile, JSON.stringify(data, null, 4));
+}
+
+function parseDauer(dauer) {
+    if (!dauer) return null;
+    const match = dauer.match(/^(\d+)([dhm])$/);
+    if (!match) return null;
+
+    const amount = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+
+    if (unit === "d") return amount * 24 * 60 * 60 * 1000;
+    if (unit === "h") return amount * 60 * 60 * 1000;
+    if (unit === "m") return amount * 60 * 1000;
+    return null;
+}
+
+function isCurrentlyAbgemeldet(abmeldungen, userId) {
+    const now = Date.now();
+    const eintraege = abmeldungen[userId] || [];
+    return eintraege.some(e => now >= e.start && now <= e.end);
+}
+
+function getAktiveAbmeldung(abmeldungen, userId) {
+    const now = Date.now();
+    const eintraege = abmeldungen[userId] || [];
+    return eintraege.find(e => now >= e.start && now <= e.end) || null;
+}
+
+function formatDauer(ms) {
+    const minuten = Math.floor(ms / 60000);
+    const tage = Math.floor(minuten / 1440);
+    const stunden = Math.floor((minuten % 1440) / 60);
+    const rest = minuten % 60;
+
+    const teile = [];
+    if (tage > 0) teile.push(`${tage} Tag(e)`);
+    if (stunden > 0) teile.push(`${stunden} Stunde(n)`);
+    if (rest > 0 || teile.length === 0) teile.push(`${rest} Minute(n)`);
+
+    return teile.join(" ");
+}
+
+// Automatische Auswertung fälliger Besprechungen (jede Minute)
+setInterval(async () => {
+    const besprechungen = loadBesprechungen();
+    const now = Date.now();
+    let changed = false;
+
+    for (const [messageId, eintrag] of Object.entries(besprechungen)) {
+        if (eintrag.ausgewertet || now < eintrag.zeitpunkt) continue;
+
+        try {
+            const channel = await client.channels.fetch(eintrag.channelId).catch(() => null);
+            const message = channel ? await channel.messages.fetch(messageId).catch(() => null) : null;
+
+            if (!message) {
+                eintrag.ausgewertet = true;
+                changed = true;
+                continue;
+            }
+
+            const anwesendReaction = message.reactions.cache.get(EMOJI_ANWESEND);
+            const nichtAnwesendReaction = message.reactions.cache.get(EMOJI_NICHT_ANWESEND);
+
+            const anwesendUsers = anwesendReaction
+                ? (await anwesendReaction.users.fetch()).filter(u => !u.bot)
+                : new Map();
+            const nichtAnwesendUsers = nichtAnwesendReaction
+                ? (await nichtAnwesendReaction.users.fetch()).filter(u => !u.bot)
+                : new Map();
+
+            const abmeldungen = loadAbmeldungen();
+
+            const anwesendListe = [];
+            const nichtAnwesendListe = [];
+            const autoNichtAnwesendListe = [];
+
+            for (const [userId] of anwesendUsers) {
+                if (isCurrentlyAbgemeldet(abmeldungen, userId)) {
+                    autoNichtAnwesendListe.push(userId);
+                } else {
+                    anwesendListe.push(userId);
+                }
+            }
+
+            for (const [userId] of nichtAnwesendUsers) {
+                if (anwesendUsers.has(userId)) continue; // sollte durch Exklusivität nicht vorkommen
+                if (isCurrentlyAbgemeldet(abmeldungen, userId)) {
+                    if (!autoNichtAnwesendListe.includes(userId)) autoNichtAnwesendListe.push(userId);
+                } else {
+                    nichtAnwesendListe.push(userId);
+                }
+            }
+
+            const format = list => list.length > 0 ? list.map(id => `<@${id}>`).join("\n") : "Keine";
+
+            const auswertungsEmbed = new EmbedBuilder()
+                .setColor(0x2b2d31)
+                .setTitle(`📋 Auswertung: ${eintrag.titel}`)
+                .setThumbnail(FIB_LOGO)
+                .addFields(
+                    { name: `${EMOJI_ANWESEND} Anwesend (${anwesendListe.length})`, value: format(anwesendListe), inline: true },
+                    { name: `${EMOJI_NICHT_ANWESEND} Nicht Anwesend (${nichtAnwesendListe.length})`, value: format(nichtAnwesendListe), inline: true },
+                    { name: `⏸️ Automatisch abgemeldet (${autoNichtAnwesendListe.length})`, value: format(autoNichtAnwesendListe), inline: true }
+                )
+                .setFooter({ text: `Zeitpunkt der Besprechung: ${new Date(eintrag.zeitpunkt).toLocaleString("de-DE")}` })
+                .setTimestamp();
+
+            const internChannel = await client.channels.fetch(besprechungInternChannelId).catch(() => null);
+            if (internChannel) await internChannel.send({ embeds: [auswertungsEmbed] });
+
+            eintrag.ausgewertet = true;
+            changed = true;
+        } catch (err) {
+            console.error(`Fehler bei Auswertung der Besprechung ${messageId}:`, err);
+        }
+    }
+
+    if (changed) saveBesprechungen(besprechungen);
+}, 60_000);
+
+/**
+ * =========================
  * CLIENT READY
  * =========================
  */
@@ -297,6 +484,36 @@ client.on('guildMemberAdd', async (member) => {
 
 /**
  * =========================
+ * BESPRECHUNG - REACTION EXKLUSIVITÄT
+ * =========================
+ */
+client.on("messageReactionAdd", async (reaction, user) => {
+    if (user.bot) return;
+
+    try {
+        if (reaction.partial) await reaction.fetch();
+        if (reaction.message.partial) await reaction.message.fetch();
+    } catch {
+        return;
+    }
+
+    const emoji = reaction.emoji.name;
+    if (![EMOJI_ANWESEND, EMOJI_NICHT_ANWESEND].includes(emoji)) return;
+
+    const besprechungen = loadBesprechungen();
+    const eintrag = besprechungen[reaction.message.id];
+    if (!eintrag || eintrag.ausgewertet) return;
+
+    const oppositeEmoji = emoji === EMOJI_ANWESEND ? EMOJI_NICHT_ANWESEND : EMOJI_ANWESEND;
+    const oppositeReaction = reaction.message.reactions.cache.get(oppositeEmoji);
+
+    if (oppositeReaction) {
+        try { await oppositeReaction.users.remove(user.id); } catch {}
+    }
+});
+
+/**
+ * =========================
  * INTERACTIONS
  * =========================
  */
@@ -305,22 +522,36 @@ client.on("interactionCreate", async interaction => {
 
     const { commandName } = interaction;
 
-    if (!hasCommandPermission(interaction.member, commandName)) {
+    const OPEN_COMMANDS = ["abmelden"]; // für alle nutzbar, kein Rollencheck
+
+    if (!OPEN_COMMANDS.includes(commandName) && !hasCommandPermission(interaction.member, commandName)) {
         return interaction.reply({
             content: "❌ Du hast keine Berechtigung für diesen Command.",
             ephemeral: true
         });
     }
 
-    // Gemeinsame Optionen (für Commands die sie nutzen)
-    const member = interaction.options.getMember("mitarbeiter");
-    const grund = interaction.options.getString("grund") || "Kein Grund angegeben";
+// Gemeinsame Optionen (nur für Commands, die "mitarbeiter" nutzen)
+    const MEMBER_COMMANDS = [
+        "einstellen", "entlassen", "befoerdern", "degradieren",
+        "suspendieren", "suspendierung_aufheben",
+        "sanktionieren", "sanktionen", "sanktion_loeschen",
+        "abteilung_zuweisen", "abteilung_entfernen"
+    ];
 
-    if (!member) {
-        return interaction.reply({
-            content: "❌ Mitarbeiter nicht gefunden.",
-            ephemeral: true
-        });
+    let member = null;
+    let grund = "Kein Grund angegeben";
+
+    if (MEMBER_COMMANDS.includes(commandName)) {
+        member = interaction.options.getMember("mitarbeiter");
+        grund = interaction.options.getString("grund") || "Kein Grund angegeben";
+
+        if (!member) {
+            return interaction.reply({
+                content: "❌ Mitarbeiter nicht gefunden.",
+                ephemeral: true
+            });
+        }
     }
 
     /**
@@ -886,6 +1117,149 @@ client.on("interactionCreate", async interaction => {
         });
 
         return interaction.reply({ content: `✅ Aus Abteilung **${abteilung.name}** entfernt.`, ephemeral: true });
+    }
+    /**
+     * =========================
+     * BESPRECHUNG ERSTELLEN
+     * =========================
+     */
+    if (commandName === "besprechung_erstellen") {
+        const titel = interaction.options.getString("titel");
+        const datum = interaction.options.getString("datum");
+        const uhrzeit = interaction.options.getString("uhrzeit");
+        const info = interaction.options.getString("info");
+
+        const zeitpunkt = parseDatumUhrzeit(datum, uhrzeit);
+
+        if (!zeitpunkt) {
+            return interaction.reply({
+                content: "❌ Ungültiges Format. Nutze Datum `TT.MM.JJJJ` und Uhrzeit `HH:MM`.",
+                ephemeral: true
+            });
+        }
+
+        if (zeitpunkt <= Date.now()) {
+            return interaction.reply({
+                content: "❌ Der Zeitpunkt muss in der Zukunft liegen.",
+                ephemeral: true
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865f2)
+            .setTitle(`📅 ${titel}`)
+            .setDescription(
+                (info ? `${info}\n\n` : "") +
+                `🕒 **Zeitpunkt:** <t:${Math.floor(zeitpunkt / 1000)}:F> (<t:${Math.floor(zeitpunkt / 1000)}:R>)\n\n` +
+                `Reagiere mit ${EMOJI_ANWESEND} für **Anwesend** oder ${EMOJI_NICHT_ANWESEND} für **Nicht Anwesend**.`
+            )
+            .setThumbnail(FIB_LOGO)
+            .setFooter({ text: `Erstellt von ${interaction.user.tag}` })
+            .setTimestamp();
+
+        const sentMessage = await interaction.channel.send({ embeds: [embed] });
+        await sentMessage.react(EMOJI_ANWESEND);
+        await sentMessage.react(EMOJI_NICHT_ANWESEND);
+
+        const besprechungen = loadBesprechungen();
+        besprechungen[sentMessage.id] = {
+            channelId: sentMessage.channel.id,
+            guildId: interaction.guild.id,
+            titel,
+            zeitpunkt,
+            ersteller: interaction.user.id,
+            erstellt: Date.now(),
+            ausgewertet: false
+        };
+        saveBesprechungen(besprechungen);
+
+        return interaction.reply({ content: "✅ Besprechung erstellt.", ephemeral: true });
+    }
+
+    /**
+     * =========================
+     * ABMELDEN
+     * =========================
+     */
+    if (commandName === "abmelden") {
+        const dauer = interaction.options.getString("dauer");
+        const abmeldeGrund = interaction.options.getString("grund");
+
+        const ms = parseDauer(dauer);
+        if (!ms) {
+            return interaction.reply({
+                content: "❌ Ungültiges Dauer-Format. Nutze z. B. `3d`, `12h` oder `30m`.",
+                ephemeral: true
+            });
+        }
+
+        const abmeldungen = loadAbmeldungen();
+        const userId = interaction.user.id;
+        if (!abmeldungen[userId]) abmeldungen[userId] = [];
+
+        const now = Date.now();
+        const bereitsAktiv = getAktiveAbmeldung(abmeldungen, userId);
+        if (bereitsAktiv) {
+            return interaction.reply({
+                content: `❌ Du bist bereits abgemeldet bis <t:${Math.floor(bereitsAktiv.ende / 1000)}:F>.`,
+                ephemeral: true
+            });
+        }
+
+        const ende = now + ms;
+        abmeldungen[userId].push({ start: now, ende, grund: abmeldeGrund });
+        saveAbmeldungen(abmeldungen);
+
+        return interaction.reply({
+            content: `✅ Du bist abgemeldet bis <t:${Math.floor(ende / 1000)}:F> (<t:${Math.floor(ende / 1000)}:R>).\n📄 Grund: ${abmeldeGrund}`,
+            ephemeral: true
+        });
+    }
+
+    /**
+     * =========================
+     * ABMELDUNG STATUS
+     * =========================
+     */
+    if (commandName === "abmeldung_status") {
+        const target = interaction.options.getUser("mitarbeiter");
+        const abmeldungen = loadAbmeldungen();
+        const eintraege = (abmeldungen[target.id] || []).slice().sort((a, b) => b.start - a.start);
+
+        if (eintraege.length === 0) {
+            return interaction.reply({
+                content: `✅ <@${target.id}> hat sich noch nie abgemeldet.`,
+                ephemeral: true
+            });
+        }
+
+        const gesamtDauerMs = eintraege.reduce((sum, e) => sum + (e.ende - e.start), 0);
+        const aktiv = getAktiveAbmeldung(abmeldungen, target.id);
+
+        const embed = new EmbedBuilder()
+            .setColor(aktiv ? 0xffaa00 : 0x2b2d31)
+            .setTitle(`Abmeldungen von ${target.tag}`)
+            .setThumbnail(FIB_LOGO)
+            .setDescription(
+                (aktiv
+                    ? `⏸️ **Aktuell abgemeldet** bis <t:${Math.floor(aktiv.ende / 1000)}:F>\n📄 Grund: ${aktiv.grund}\n\n`
+                    : "✅ **Aktuell nicht abgemeldet**\n\n") +
+                `📊 Insgesamt **${eintraege.length}** Abmeldung(en), gesamt **${formatDauer(gesamtDauerMs)}**`
+            )
+            .addFields(
+                eintraege.slice(0, 10).map((e, i) => ({
+                    name: `#${eintraege.length - i} – ${new Date(e.start).toLocaleDateString("de-DE")}`,
+                    value: `⏱ ${formatDauer(e.ende - e.start)}\n📄 ${e.grund}`,
+                    inline: true
+                }))
+            )
+            .setTimestamp();
+
+        if (eintraege.length > 10) {
+            embed.setFooter({ text: "Nur die letzten 10 Einträge werden angezeigt." });
+        }
+
+        return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 });
 

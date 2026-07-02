@@ -221,6 +221,53 @@ const commands = [
             .setDescription('ID der Sanktion (aus /sanktionen).')
             .setRequired(true)
         ),
+
+    new SlashCommandBuilder()
+        .setName('besprechung_erstellen')
+        .setDescription('Erstelle eine neue Besprechung.')
+        .addStringOption(opt => opt
+            .setName('titel')
+            .setDescription('Titel der Besprechung.')
+            .setRequired(true)
+        )
+        .addStringOption(opt => opt
+            .setName('datum')
+            .setDescription('Datum der Besprechung.')
+            .setRequired(true)
+        )
+        .addStringOption(opt => opt
+            .setName('uhrzeit')
+            .setDescription('Uhrzeit der Besprechung.')
+            .setRequired(true)
+        )
+        .addStringOption(opt => opt
+            .setName('info')
+            .setDescription('Zusätzliche Informationen zur Besprechung.')
+            .setRequired(false)
+        ),
+    
+    new SlashCommandBuilder()
+        .setName('abmelden')
+        .setDescription('Melde dich für einen bestimmten Zeitraum ab.')
+        .addStringOption(opt => opt
+            .setName('dauer')
+            .setDescription('z.B. 3d, 12h, 30m')
+            .setRequired(true)
+        )
+        .addStringOption(opt => opt
+            .setName('grund')
+            .setDescription('Grund für die Abmeldung.')
+            .setRequired(true)
+        ),
+    
+    new SlashCommandBuilder()
+        .setName('abmeldung_status')
+        .setDescription('Zeigt den Abmeldestatus eines Mitarbeiters an.')
+        .addUserOption(opt => opt
+            .setName('mitarbeiter')
+            .setDescription('Der Mitarbeiter, dessen Abmeldestatus angezeigt werden soll.')
+            .setRequired(true)
+        ),
 ]
 .map(cmd => cmd.toJSON());
 
