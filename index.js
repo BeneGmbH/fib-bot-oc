@@ -1,7 +1,17 @@
 // index.js
 require("dotenv").config();
-const { teamupdatesChannelId, personalChannelId } = require("./config.json");
-const { Client, GatewayIntentBits, EmbedBuilder, Partials } = require("discord.js");
+const {
+    teamupdatesChannelId,
+    personalChannelId,
+    besprechungInternChannelId,
+    besprechungChannelId,
+    abmeldungChannelId
+} = require("./config.json");
+const {
+    Client, GatewayIntentBits, EmbedBuilder, Partials,
+    ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    ModalBuilder, TextInputBuilder, TextInputStyle
+} = require("discord.js");
 
 const {
     dienstgrade,
@@ -22,7 +32,7 @@ const FIB_LOGO = "https://cdn.discordapp.com/attachments/1364316792226316341/151
 
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMessageReactions
@@ -31,6 +41,7 @@ const client = new Client({
         Partials.Channel,
         Partials.GuildMember,
         Partials.Message,
+        Partials.Reaction,
         Partials.User
     ]
 });
@@ -44,7 +55,7 @@ const besprechungenFile = path.join(__dirname, "data", "besprechungen.json");
 const abmeldungenFile = path.join(__dirname, "data", "abmeldungen.json");
 
 const EMOJI_ANWESEND = "✅";
-const EMOJI_ABWESEND = "❌";
+const EMOJI_NICHT_ANWESEND = "❌";
 
 /**
  * =========================
@@ -296,13 +307,13 @@ function saveBesprechungen(data) {
 function parseDatumUhrzeit(datum, uhrzeit) {
     const datumMatch = datum.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
     const zeitMatch = uhrzeit.match(/^(\d{2}):(\d{2})$/);
-    if (!datumMatch || !uhrzeitMatch) return null;
+    if (!datumMatch || !zeitMatch) return null;
 
-    const [, tt, mm, jjjj] = datumMatch;
-    const [, hh, mm] = uhrzeitMatch;
+    const [, tt, mo, jjjj] = datumMatch;
+    const [, hh, min] = zeitMatch;
 
     const date = new Date(
-        parseInt(jjjj), parseInt(mm) - 1, parseInt(tt),
+        parseInt(jjjj), parseInt(mo) - 1, parseInt(tt),
         parseInt(hh), parseInt(min), 0
     );
 
@@ -344,13 +355,13 @@ function parseDauer(dauer) {
 function isCurrentlyAbgemeldet(abmeldungen, userId) {
     const now = Date.now();
     const eintraege = abmeldungen[userId] || [];
-    return eintraege.some(e => now >= e.start && now <= e.end);
+    return eintraege.some(e => now >= e.start && now <= e.ende);
 }
 
 function getAktiveAbmeldung(abmeldungen, userId) {
     const now = Date.now();
     const eintraege = abmeldungen[userId] || [];
-    return eintraege.find(e => now >= e.start && now <= e.end) || null;
+    return eintraege.find(e => now >= e.start && now <= e.ende) || null;
 }
 
 function formatDauer(ms) {
@@ -365,6 +376,26 @@ function formatDauer(ms) {
     if (rest > 0 || teile.length === 0) teile.push(`${rest} Minute(n)`);
 
     return teile.join(" ");
+}
+
+async function sendAbmeldungUpdate(user, eintrag) {
+    const embed = new EmbedBuilder()
+        .setColor(0xffaa00)
+        .setTitle("📩 Neue Abmeldung")
+        .setThumbnail(FIB_LOGO)
+        .setDescription(`<@${user.id}> hat sich abgemeldet.`)
+        .addFields(
+            { name: "⏱ Bis", value: `<t:${Math.floor(eintrag.ende / 1000)}:F> (<t:${Math.floor(eintrag.ende / 1000)}:R>)`, inline: true },
+            { name: "📄 Grund", value: eintrag.grund, inline: true }
+        )
+        .setTimestamp();
+
+    try {
+        const channel = await client.channels.fetch(abmeldungChannelId);
+        if (channel) await channel.send({ embeds: [embed] });
+    } catch (err) {
+        console.error("Fehler beim Senden der Abmeldungs-Benachrichtigung:", err);
+    }
 }
 
 // Automatische Auswertung fälliger Besprechungen (jede Minute)
@@ -445,6 +476,88 @@ setInterval(async () => {
 
     if (changed) saveBesprechungen(besprechungen);
 }, 60_000);
+
+/**
+ * =========================
+ * ABMELDUNG - BUTTON & MODAL
+ * =========================
+ */
+client.on("interactionCreate", async interaction => {
+    // Button gedrückt -> Modal öffnen
+    if (interaction.isButton() && interaction.customId === "abmeldung_button") {
+        const abmeldungen = loadAbmeldungen();
+        const bereitsAktiv = getAktiveAbmeldung(abmeldungen, interaction.user.id);
+
+        if (bereitsAktiv) {
+            return interaction.reply({
+                content: `❌ Du bist bereits abgemeldet bis <t:${Math.floor(bereitsAktiv.ende / 1000)}:F>.`,
+                ephemeral: true
+            });
+        }
+
+        const modal = new ModalBuilder()
+            .setCustomId("abmeldung_modal")
+            .setTitle("Abmelden");
+
+        const dauerInput = new TextInputBuilder()
+            .setCustomId("abmeldung_dauer")
+            .setLabel("Dauer (z. B. 3d, 12h, 30m)")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        const grundInput = new TextInputBuilder()
+            .setCustomId("abmeldung_grund")
+            .setLabel("Grund")
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(dauerInput),
+            new ActionRowBuilder().addComponents(grundInput)
+        );
+
+        return interaction.showModal(modal);
+    }
+
+    // Modal abgeschickt -> Abmeldung eintragen (gleiche Logik wie /abmelden)
+    if (interaction.isModalSubmit() && interaction.customId === "abmeldung_modal") {
+        const dauer = interaction.fields.getTextInputValue("abmeldung_dauer");
+        const abmeldeGrund = interaction.fields.getTextInputValue("abmeldung_grund");
+
+        const ms = parseDauer(dauer);
+        if (!ms) {
+            return interaction.reply({
+                content: "❌ Ungültiges Dauer-Format. Nutze z. B. `3d`, `12h` oder `30m`.",
+                ephemeral: true
+            });
+        }
+
+        const abmeldungen = loadAbmeldungen();
+        const userId = interaction.user.id;
+        if (!abmeldungen[userId]) abmeldungen[userId] = [];
+
+        const now = Date.now();
+        const bereitsAktiv = getAktiveAbmeldung(abmeldungen, userId);
+        if (bereitsAktiv) {
+            return interaction.reply({
+                content: `❌ Du bist bereits abgemeldet bis <t:${Math.floor(bereitsAktiv.ende / 1000)}:F>.`,
+                ephemeral: true
+            });
+        }
+
+        const ende = now + ms;
+        const neuerEintrag = { start: now, ende, grund: abmeldeGrund };
+        abmeldungen[userId].push(neuerEintrag);
+        saveAbmeldungen(abmeldungen);
+
+        await sendAbmeldungUpdate(interaction.user, neuerEintrag);
+
+        return interaction.reply({
+            content: `✅ Du bist abgemeldet bis <t:${Math.floor(ende / 1000)}:F> (<t:${Math.floor(ende / 1000)}:R>).\n📄 Grund: ${abmeldeGrund}`,
+            ephemeral: true
+        });
+    }
+});
 
 /**
  * =========================
@@ -1151,13 +1264,31 @@ client.on("interactionCreate", async interaction => {
             .setDescription(
                 (info ? `${info}\n\n` : "") +
                 `🕒 **Zeitpunkt:** <t:${Math.floor(zeitpunkt / 1000)}:F> (<t:${Math.floor(zeitpunkt / 1000)}:R>)\n\n` +
+                `⚠️ Es herrscht Anzugspflicht. Bitte erscheinen Sie pünktlich. Falls Sie verhindert sind, melden Sie sich unten ab.\n\n` +
+                `Im Rahmen der Besprechung werden Sie die Möglichkeit haben, Anliegen die das FIB betreffen anzusprechen. Bitte machen Sie sich diesbezüglich Gedanken.\n\n` +
                 `Reagiere mit ${EMOJI_ANWESEND} für **Anwesend** oder ${EMOJI_NICHT_ANWESEND} für **Nicht Anwesend**.`
             )
             .setThumbnail(FIB_LOGO)
             .setFooter({ text: `Erstellt von ${interaction.user.tag}` })
             .setTimestamp();
 
-        const sentMessage = await interaction.channel.send({ embeds: [embed] });
+        const abmeldenRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("abmeldung_button")
+                .setLabel("Abmelden")
+                .setEmoji("📩")
+                .setStyle(ButtonStyle.Danger)
+        );
+
+        const zielChannel = await client.channels.fetch(besprechungChannelId).catch(() => null);
+        if (!zielChannel) {
+            return interaction.reply({
+                content: "❌ Der konfigurierte Besprechungs-Channel wurde nicht gefunden. Prüfe `besprechungChannelId` in der config.json.",
+                ephemeral: true
+            });
+        }
+
+        const sentMessage = await zielChannel.send({ embeds: [embed], components: [abmeldenRow] });
         await sentMessage.react(EMOJI_ANWESEND);
         await sentMessage.react(EMOJI_NICHT_ANWESEND);
 
@@ -1207,8 +1338,11 @@ client.on("interactionCreate", async interaction => {
         }
 
         const ende = now + ms;
-        abmeldungen[userId].push({ start: now, ende, grund: abmeldeGrund });
+        const neuerEintrag = { start: now, ende, grund: abmeldeGrund };
+        abmeldungen[userId].push(neuerEintrag);
         saveAbmeldungen(abmeldungen);
+
+        await sendAbmeldungUpdate(interaction.user, neuerEintrag);
 
         return interaction.reply({
             content: `✅ Du bist abgemeldet bis <t:${Math.floor(ende / 1000)}:F> (<t:${Math.floor(ende / 1000)}:R>).\n📄 Grund: ${abmeldeGrund}`,
