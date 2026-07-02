@@ -248,15 +248,15 @@ const commands = [
     
     new SlashCommandBuilder()
         .setName('abmelden')
-        .setDescription('Melde dich für einen bestimmten Zeitraum ab.')
+        .setDescription('Meldet dich für einen bestimmten Zeitraum ab.')
         .addStringOption(opt => opt
             .setName('dauer')
-            .setDescription('z.B. 3d, 12h, 30m')
+            .setDescription('z. B. 3d, 12h, 30m')
             .setRequired(true)
         )
         .addStringOption(opt => opt
             .setName('grund')
-            .setDescription('Grund für die Abmeldung.')
+            .setDescription('Grund der Abmeldung.')
             .setRequired(true)
         ),
     

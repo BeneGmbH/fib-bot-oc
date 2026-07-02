@@ -1325,7 +1325,7 @@ client.on("interactionCreate", async interaction => {
         }
 
         const abmeldungen = loadAbmeldungen();
-        const userId = interaction.user.id;
+        const userId = interaction.user.id; // Der Befehlschreiber selbst
         if (!abmeldungen[userId]) abmeldungen[userId] = [];
 
         const now = Date.now();
