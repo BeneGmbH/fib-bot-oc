@@ -5,7 +5,8 @@ const {
     personalChannelId,
     besprechungInternChannelId,
     besprechungChannelId,
-    abmeldungChannelId
+    abmeldungChannelId,
+    fibRolleId
 } = require("./config.json");
 const {
     Client, GatewayIntentBits, EmbedBuilder, Partials,
@@ -1288,7 +1289,12 @@ client.on("interactionCreate", async interaction => {
             });
         }
 
-        const sentMessage = await zielChannel.send({ embeds: [embed], components: [abmeldenRow] });
+        const sentMessage = await zielChannel.send({
+            content: `<@&${fibRolleId}>`,
+            embeds: [embed],
+            components: [abmeldenRow],
+            allowedMentions: { roles: [fibRolleId] }
+        });
         await sentMessage.react(EMOJI_ANWESEND);
         await sentMessage.react(EMOJI_NICHT_ANWESEND);
 
