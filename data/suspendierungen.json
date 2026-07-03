@@ -1,1 +1,47 @@
-{}
+{
+    "1341437337552552039": {
+        "roles": [
+            "1456757373057110147",
+            "1456965567507595366",
+            "1457035617383878892",
+            "1456949060497051763",
+            "1457036457737850933",
+            "1457035572190253303",
+            "1456949201551364220",
+            "1477314521851887805",
+            "1457036409402818814"
+        ],
+        "reason": "IAA Intern",
+        "moderator": "682590740143931394",
+        "timestamp": 1781731792435,
+        "expires": null
+    },
+    "1464084055279665213": {
+        "roles": [
+            "1456757373057110147",
+            "1456965567507595366",
+            "1457035617383878892",
+            "1456760001765969932",
+            "1456949060497051763",
+            "1457036457737850933",
+            "1456949201551364220"
+        ],
+        "reason": "Intern - Bis zum Gespräch mit der FIB-03 Dienstgegenstände abglegen, außer Dienst gehen und auf weitere Anweisungen per D-Funk oder IC warten. Sollten Sie in der Zeit in den Dienst treten, werden Sie mit sofortiger Wirkung unehrenhaft entlassen und dementsprechend Strafrechtlich verfolgt.",
+        "moderator": "531974485155381248",
+        "timestamp": 1783031544659,
+        "expires": null
+    },
+    "889941423103823902": {
+        "roles": [
+            "1456757373057110147",
+            "1456965567507595366",
+            "1456760001765969932",
+            "1456949060497051763",
+            "1456949201551364220"
+        ],
+        "reason": "Korruption - Bei Sichtkontakt sofort festnehmen und der FIB-03 überstellen für weitere MAßnahmen",
+        "moderator": "531974485155381248",
+        "timestamp": 1783111808124,
+        "expires": null
+    }
+}
